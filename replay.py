@@ -110,3 +110,32 @@ class Replay(Memory):
         if self.state_values is not None:
             batch['state_values'] = state_values
         return batch
+
+    def update_batch(self, loss_per_instance):
+        pass
+
+    def set_memory(self, states, actions, rewards, terminals, internals, state_values=None):
+        self.size = len(states)
+        if self.next_in_place:
+            raise NotImplemented()
+        if len(states) == self.capacity:
+            for name, state in states.items():
+                self.states[name] = np.asarray(state)
+            for name, action in actions.items():
+                self.actions[name] = np.asarray(action)
+            self.rewards = np.asarray(rewards)
+            self.terminals = np.asarray(terminals)
+            self.internals = [np.asarray(internal) for internal in internals]
+            if state_values is not None:
+                self.state_values = np.asarray(state_values)
+        else:
+            for name, state in states.items():
+                self.states[name][:len(state)] = state
+            for name, action in actions.items():
+                self.actions[name][:len(action)] = action
+            self.rewards[:len(rewards)] = rewards
+            self.terminals[:len(terminals)] = terminals
+            for i, internal in enumerate(internals):
+                self.internals[i][:len(internal)] = internal
+            if state_values is not None:
+                self.state_values[:len(state_values)] = state_values
