@@ -30,6 +30,58 @@ class PrioritizedReplay(Memory):
                 raise TensorForceError("Memory contain only unseen observations")
         self.last_obervation = (state, action, reward, terminal, internal)
 
+    def get_batch(self, batch_size, next_states=False):
+        states = {name: np.zeros((batch_size,) + tuple(state.shape), dtype=util.np_dtype(state.type)) for name, state in self.states_config.items()}
+        actions = {name: np.zeros((batch_size,) + tuple(action.shape), dtype=util.np_dtype('float' if action.continuous else 'int')) for name, action in self.actions_config.items()}
+        internals = [np.zeros((batch_size,) + shape, dtype) for shape, dtype in self.internals_config]
+        rewards = np.zeros((batch_size,), dtype=util.np_dtype('float'))
+        terminals = np.zeros((batch_size,), dtype=util.np_dtype('bool'))
+        if next_states:
+            next_states = {name: np.zeros((batch_size,) + tuple(state.shape), dtype=util.np_dtype(state.type)) for name, state in self.states_config.items()}
+            next_internals = [np.zeros((batch_size,) + shape, dtype) for shape, dtype in self.internals_config]
+
+        self.batch_indices = list()
+        not_sampled_index = self.none_priority_index
+        sum_priorities = sum(priority for priority, _ in self.observations if priority is not None)
+        for n in range(batch_size):
+            if not_sampled_index < len(self.observations):
+                _, observation = self.observations[not_sampled_index]
+                index = not_sampled_index
+                not_sampled_index += 1
+            elif sum_priorities / self.capacity < util.epsilon:
+                index = randrange(self.none_priority_index)
+                while index in self.batch_indices:
+                    index = randrange(self.none_priority_index)
+            else:
+                while True:
+                    sample = random()
+                    for index, (priority, observation) in enumerate(self.observations):
+                        sample -= priority / sum_priorities
+                        if sample < 0.0 or index >= self.none_priority_index:
+                            break
+                    if index not in self.batch_indices:
+                        break
+
+            for name, state in states.items():
+                state[n] = observation[0][name]
+            for name, action in actions.items():
+                action[n] = observation[1][name]
+            rewards[n] = observation[2]
+            terminals[n] = observation[3]
+            for k, internal in enumerate(internals):
+                internal[n] = observation[4][k]
+            if next_states:
+                for name, next_state in next_states.items():
+                    next_state[n] = observation[5][name]
+                for k, next_internal in enumerate(next_internals):
+                    next_internal[n] = observation[6][k]
+            self.batch_indices.append(index)
+
+        if next_states:
+            return dict(states=states, actions=actions, rewards=rewards, terminals=terminals, internals=internals, next_states=next_states, next_internals=next_internals)
+        else:
+            return dict(states=states, actions=actions, rewards=rewards, terminals=terminals, internals=internals)
+
     def update_batch(self, loss_per_instance):
         if self.batch_indices is None:
             raise TensorForceError("Must call get_batch method before update_batch")
