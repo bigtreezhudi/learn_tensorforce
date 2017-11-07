@@ -2,6 +2,7 @@ import logging
 from tensorforce import util, TensorForceError
 from tensorforce.core.preprocessing import Preprocessing
 from tensorforce.core.explorations import Exploration
+from random import random
 
 
 class Agent(object):
@@ -107,3 +108,47 @@ class Agent(object):
 
     def save_model(self, path, timestep=None):
         self.model.save_model(path, timestep=timestep)
+
+    def act(self, state, deterministic=False):
+        if not self.multi_threads:
+            self.timestep += 1
+        self.local_step += 1
+        self.current_internal = self.next_internal
+
+        if self.unique_state:
+            self.current_state = dict(state=state)
+        else:
+            self.current_state = state
+
+        # Preprocessing
+        for name, preprocessing in self.preprocessing.items():
+            self.current_state[name] = preprocessing.process(state=self.current_state[name])
+
+        # Podel action
+        action_result = self.model.get_action(state=self.current_state, internal=self.current_internal, deterministic=deterministic)
+        self.current_action, self.next_internal = action_result[:2]
+        self.extension = action_result[2:]
+
+        # Exploration
+        if not deterministic:
+            for name, exploration in self.exploration.items():
+                if self.actions_config[name].continuous:
+                    explore = (lambda: exploration(episode=self.episode, timestep=self.timestep))
+                    shape = self.actions_config[name].shape
+                    exploration = np.array([explore() for _ in range(util.prod(shape))])
+                    self.current_action[name] += np.reshape(exploration, shape)
+                else:
+                    if random() < exploration(episode=self.episode, timestep=self.timestep):
+                        shape = self.actions_config[name].shape
+                        num_actions = self.actions_config[name].num_actions
+                        self.current_action[name] = np.random.randint(low=num_actions, size=shape)
+
+        if self.unique_action:
+            return self.current_action['action']
+        else:
+            return self.current_action
+
+    def observe(self, reward, terminal):
+        if self.reward_preprocessing is not None:
+            reward = self.reward_preprocessing.process(reward)
+        return reward, terminal
