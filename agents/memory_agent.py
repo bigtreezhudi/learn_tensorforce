@@ -53,3 +53,31 @@ class MemoryAgent(Agent):
                 batch = self.memory.get_batch(batch_size=self.batch_size, next_states=True)
                 _, loss_per_instance = self.model.update(batch=batch)
                 self.memory.update_batch(loss_per_instance=loss_per_instance)
+
+    def import_observations(self, observations):
+        for observation in observations:
+            self.memory.add_observation(
+                state=observation['state'],
+                action=observation['action'],
+                reward=observation['reward'],
+                terminal=observation['terminal'],
+                internal=observation['internal']
+            )
+
+    def memory_dump_path(self, path):
+        return "{}{}".format(path, self.memory_dump_suffix)
+
+    def load_model(self, path, load_memory=True):
+        self.model.load_model(path)
+        if load_memory:
+            memory_dump_path = self.memory_dump_path(path)
+            if not os.path.exists(memory_dump_path):
+                self.logger.error("load memory dump file error, file do not exist:%s", memory_dump_path)
+            else:
+                self.memory = pickle_load(memory_dump_path, compression=True)
+
+    def save_model(self, path, timestep=None, save_memory=True):
+        model_path = self.model.save_model(path, timestep=timestep)
+        if save_memory:
+            memory_dump_path = self.memory_dump_path(model_path)
+            relatively_safe_pickle_dump(self.memory, memory_dump_path, compression=True)
