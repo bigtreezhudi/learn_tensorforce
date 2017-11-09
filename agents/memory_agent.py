@@ -1,6 +1,7 @@
 from tensorforce.agents import Agent
 from tensorforce.core.memories import Memory
 from tensorforce.util import relatively_safe_pickle_dump, pickle_load
+import os
 
 
 class MemoryAgent(Agent):
